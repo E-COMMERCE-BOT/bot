@@ -1,3 +1,10 @@
+"""Start command handler and onboarding flow.
+
+Registers the /start handler that creates or fetches a user profile
+in the backend and sends a welcome message with the main keyboard.
+Includes robust error handling for network and server issues.
+"""
+
 import logging
 import aiohttp
 from aiogram import Router
@@ -16,6 +23,13 @@ start_router = Router()
 
 @start_router.message(CommandStart())
 async def cmd_start(message: AiogramMessage, state: FSMContext):
+    """Handle /start: ensure user exists and greet with main menu.
+
+    - Clears any FSM state
+    - Sends user data to backend to create/fetch profile
+    - Replies with a welcome message and the main keyboard
+    - Handles timeouts, connection errors, and unexpected exceptions
+    """
     await state.clear()
 
     user_data = {

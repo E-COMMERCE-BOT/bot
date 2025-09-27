@@ -1,3 +1,9 @@
+"""Convenience constants with backend API endpoints.
+
+Derived from the `base_url` in settings. These are used by handlers
+and services to make HTTP requests to the backend.
+"""
+
 from data.config import config_settings
 
 base_url = config_settings.base_url
@@ -7,4 +13,4 @@ url_product = f"{base_url}/products/"
 url_category = f"{base_url}/categories/"
 url_status = f"{base_url}/statuses/"
 url_delivery = f"{base_url}/deliveries/"
-url_order= f"{base_url}/orders/"
+url_order = f"{base_url}/orders/"

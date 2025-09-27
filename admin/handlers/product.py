@@ -1,3 +1,10 @@
+"""Admin product management handlers and helpers.
+
+This module implements the admin-side product CRUD flows: creating,
+editing, and categorizing products via Telegram inline keyboards.
+Includes helper functions to call the backend API.
+"""
+
 import aiohttp
 import logging
 from datetime import datetime
@@ -29,6 +36,7 @@ admin_product_router = Router()
 # ======================================================================================
 
 class ProductForm(StatesGroup):
+    """FSM states for creating a new product."""
     waiting_for_name = State()
     waiting_for_description = State()
     waiting_for_photo = State()
@@ -38,6 +46,7 @@ class ProductForm(StatesGroup):
     waiting_for_category_tree = State()          
 
 class UpdateProductForm(StatesGroup):
+    """FSM states for updating an existing product."""
     product_id = State()
     editing_field = State()
     waiting_for_value = State()
@@ -48,6 +57,7 @@ class UpdateProductForm(StatesGroup):
 # ======================================================================================
 
 async def fetch_categories(parent: int | None = None) -> list:
+    """Fetch categories; if parent is provided, fetch its children only."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     params = {}
     if parent is not None:
@@ -64,6 +74,7 @@ async def fetch_categories(parent: int | None = None) -> list:
         return []
 
 async def fetch_category_by_id(category_id: int) -> dict | None:
+    """Fetch a single category by id, or None if not found."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -77,6 +88,7 @@ async def fetch_category_by_id(category_id: int) -> dict | None:
         return None
 
 async def fetch_products() -> list:
+    """Fetch all products (admin view)."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -90,6 +102,7 @@ async def fetch_products() -> list:
         return []
 
 async def get_product_by_id(product_id: int) -> dict | None:
+    """Return a product from the cached list by id, or None."""
     products = await fetch_products()
     for product in products:
         if product.get("id") == int(product_id):
@@ -97,6 +110,7 @@ async def get_product_by_id(product_id: int) -> dict | None:
     return None
 
 async def create_new_product(product_data: dict, photo_file_id: str | None, bot: Bot) -> dict | None:
+    """Create a product via backend API; optionally upload a photo from Telegram."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     form_data = aiohttp.FormData()
 
@@ -130,6 +144,7 @@ async def create_new_product(product_data: dict, photo_file_id: str | None, bot:
         return None
 
 async def update_product(product_id: int, updated_fields: dict, bot: Bot | None = None) -> dict | None:
+    """Update a product via backend API; supports changing the Telegram photo."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     form_data = aiohttp.FormData()
 
@@ -166,6 +181,7 @@ async def update_product(product_id: int, updated_fields: dict, bot: Bot | None 
 # ======================================================================================
 
 async def get_category_path(category_id: int) -> str:
+    """Build a human-readable category path like 'Root > Child > Leaf'."""
     path = []
     current_id = category_id
 
@@ -183,6 +199,10 @@ async def render_category_level(
     mode: str,
     state: FSMContext
 ):
+    """Render a level of the category tree for create/edit flows.
+
+    mode can be 'create' or 'edit'; state stores the traversal path.
+    """
     categories = await fetch_categories(parent=parent_id)
     builder = InlineKeyboardBuilder()
 

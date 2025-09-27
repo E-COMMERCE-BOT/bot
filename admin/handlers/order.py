@@ -1,3 +1,10 @@
+"""Admin order management handlers and API helpers.
+
+Provides admin views to list orders, inspect a single order, and
+update its status. Uses inline keyboards and communicates with the
+backend via HTTP calls.
+"""
+
 import aiohttp
 import logging
 from aiogram import Router, F
@@ -19,6 +26,7 @@ admin_order_router = Router()
 # =================================================================================================
 
 async def fetch_orders() -> list:
+    """Fetch a list of orders from backend (excluding carts in UI)."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -33,6 +41,7 @@ async def fetch_orders() -> list:
 
 
 async def get_order_by_id(order_id: int) -> dict | None:
+    """Fetch a single order by id or None if not found."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -47,6 +56,7 @@ async def get_order_by_id(order_id: int) -> dict | None:
 
 
 async def fetch_statuses() -> list:
+    """Fetch all order statuses available in backend."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -61,6 +71,7 @@ async def fetch_statuses() -> list:
 
 
 async def update_order_status(order_id: int, status_id: int) -> dict | None:
+    """Update order status and return the updated order or None on failure."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     payload = {"status_id": status_id}
     try:
@@ -80,6 +91,7 @@ async def update_order_status(order_id: int, status_id: int) -> dict | None:
 
 @admin_order_router.callback_query(F.data == "orders_menu", IsAdminGroupMember())
 async def show_orders(callback: CallbackQuery):
+    """Render a list of non-cart orders with navigation controls."""
     orders = await fetch_orders()
     if not orders:
         await callback.message.edit_text("No orders found.", reply_markup=admin_keyboard())
@@ -110,6 +122,7 @@ async def show_orders(callback: CallbackQuery):
 
 @admin_order_router.callback_query(F.data.startswith("order_"), IsAdminGroupMember())
 async def view_order(callback: CallbackQuery, state: FSMContext):
+    """Show detailed information about a specific order (items, totals)."""
     order_id = callback.data.split("_")[-1]
     order = await get_order_by_id(order_id)
     if not order:
@@ -159,6 +172,7 @@ async def view_order(callback: CallbackQuery, state: FSMContext):
 
 @admin_order_router.callback_query(F.data.startswith("choose_status_"), IsAdminGroupMember())
 async def choose_status(callback: CallbackQuery):
+    """Show status options and prompt admin to pick a new status."""
     order_id = callback.data.split("_")[-1]
     statuses = await fetch_statuses()
 
@@ -182,6 +196,7 @@ async def choose_status(callback: CallbackQuery):
 
 @admin_order_router.callback_query(F.data.startswith("update_status_"), IsAdminGroupMember())
 async def handle_update_order_status(callback: CallbackQuery):
+    """Apply the chosen status to the order and show the result."""
     _, _, order_id, status_id = callback.data.split("_")
     result = await update_order_status(int(order_id), int(status_id))
 

@@ -1,3 +1,10 @@
+"""Checkout flow handlers and supporting utilities.
+
+Implements a step-by-step checkout using FSM: collecting user details,
+selecting delivery, showing order summary, and confirming/canceling.
+Also provides helpers for calling backend API endpoints.
+"""
+
 import aiohttp
 import logging
 import re
@@ -19,6 +26,7 @@ email_pattern = re.compile(r"^[\w\.-]+@[\w\.-]+\.\w{2,}$")
 
 
 def normalize_phone_number(phone: str) -> str | None:
+    """Normalize phone to international format or return None if invalid."""
     phone = re.sub(r"[^\d+]", "", phone)
 
     if phone.startswith("8") and len(phone) == 11:
@@ -38,9 +46,11 @@ def normalize_phone_number(phone: str) -> str | None:
 # API Helpers
 # =================================================================================================
 async def _headers() -> dict:
+    """Build authorization headers for backend API requests."""
     return {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
 
 async def get_cart(user_id: int) -> dict | None:
+    """Fetch the current cart aggregate for a Telegram user id."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -56,6 +66,7 @@ async def get_cart(user_id: int) -> dict | None:
     return None
 
 async def get_user_by_tg_id(tg_id: int) -> dict | None:
+    """Fetch a user profile from backend by Telegram id."""
     headers = await _headers()
     try:
         async with aiohttp.ClientSession() as session:
@@ -71,6 +82,7 @@ async def get_user_by_tg_id(tg_id: int) -> dict | None:
 # =================================================================================================
 
 class CheckoutState(StatesGroup):
+    """FSM states for the checkout flow."""
     waiting_for_name = State()
     waiting_for_lastname = State()
     waiting_for_surname = State()
@@ -85,6 +97,11 @@ class CheckoutState(StatesGroup):
 
 @order_router.callback_query(F.data == "checkout")
 async def start_checkout(callback: CallbackQuery, state: FSMContext):
+    """Entry point for checkout.
+
+    If user data exists in backend, show it with an option to edit;
+    otherwise start step-by-step data collection.
+    """
     tg_id = callback.from_user.id
     user = await get_user_by_tg_id(tg_id)
 
@@ -125,16 +142,19 @@ async def start_checkout(callback: CallbackQuery, state: FSMContext):
 
 @order_router.callback_query(F.data == "skip_to_delivery")
 async def skip_to_delivery(callback: CallbackQuery, state: FSMContext):
+    """Skip personal data editing and proceed to delivery selection."""
     await callback.message.edit_text("Enter your address:")
     await state.set_state(CheckoutState.waiting_for_address)
 
 @order_router.callback_query(F.data == "edit_user_data")
 async def edit_user_data(callback: CallbackQuery, state: FSMContext):
+    """Start editing personal data from the first step (name)."""
     await callback.message.edit_text("Enter your first name:")
     await state.set_state(CheckoutState.waiting_for_name)
 
 @order_router.message(CheckoutState.waiting_for_name)
 async def process_name(message: Message, state: FSMContext):
+    """Validate and save first name; then request last name."""
     if not name_pattern.fullmatch(message.text.strip()):
         await message.answer("First name must contain only letters and be at least 2 characters. Please try again:")
         return
@@ -144,6 +164,7 @@ async def process_name(message: Message, state: FSMContext):
 
 @order_router.message(CheckoutState.waiting_for_lastname)
 async def process_lastname(message: Message, state: FSMContext):
+    """Validate and save last name; then request middle name."""
     if not name_pattern.fullmatch(message.text.strip()):
         await message.answer("Last name must contain only letters and be at least 2 characters. Please try again:")
         return
@@ -153,6 +174,7 @@ async def process_lastname(message: Message, state: FSMContext):
 
 @order_router.message(CheckoutState.waiting_for_surname)
 async def process_surname(message: Message, state: FSMContext):
+    """Optionally save middle name; then request phone number."""
     surname = None if message.text.strip() == "-" else message.text.strip()
     if surname and not name_pattern.fullmatch(surname):
         await message.answer("Middle name must contain only letters and be at least 2 characters. Please try again:")
@@ -163,6 +185,7 @@ async def process_surname(message: Message, state: FSMContext):
 
 @order_router.message(CheckoutState.waiting_for_phone)
 async def process_phone(message: Message, state: FSMContext):
+    """Normalize and save phone number; then request address."""
     normalized = normalize_phone_number(message.text.strip())
     if not normalized:
         await message.answer("Enter a valid phone number, for example: +79001234567")
@@ -173,6 +196,7 @@ async def process_phone(message: Message, state: FSMContext):
 
 @order_router.message(CheckoutState.waiting_for_address)
 async def process_address(message: Message, state: FSMContext):
+    """Save address and present delivery options via inline keyboard."""
     await state.update_data(address=message.text)
 
     headers = await _headers()
@@ -201,6 +225,7 @@ async def process_address(message: Message, state: FSMContext):
 
 @order_router.callback_query(F.data.startswith("choose_delivery_"), CheckoutState.choosing_delivery)
 async def choose_delivery(callback: CallbackQuery, state: FSMContext):
+    """Select delivery, compute total, and show confirmation step."""
     delivery_id = int(callback.data.split("_")[-1])
     await state.update_data(delivery_id=delivery_id)
 
@@ -240,6 +265,7 @@ async def choose_delivery(callback: CallbackQuery, state: FSMContext):
 
 @order_router.callback_query(F.data == "confirm_order", CheckoutState.confirming)
 async def confirm_order(callback: CallbackQuery, state: FSMContext):
+    """Persist order confirmation, update user profile, and finish."""
     user_id = callback.from_user.id
     cart = await get_cart(user_id)
     if not cart:
@@ -286,5 +312,6 @@ async def confirm_order(callback: CallbackQuery, state: FSMContext):
 
 @order_router.callback_query(F.data == "cancel_order", CheckoutState.confirming)
 async def cancel_order(callback: CallbackQuery, state: FSMContext):
+    """Cancel checkout flow and return to main menu."""
     await callback.message.edit_text("Checkout canceled.", reply_markup=main_keyboard())
     await state.clear()

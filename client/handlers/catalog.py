@@ -1,3 +1,10 @@
+"""Catalog browsing handlers and API helpers.
+
+Fetches categories and products from the backend API and presents
+them via Telegram inline keyboards. Supports navigating back and
+forth between root, categories, and product cards.
+"""
+
 import aiohttp
 import logging
 from aiogram import Router, F
@@ -19,6 +26,7 @@ catalog_router = Router()
 # =================================================================================================
 
 async def fetch_categories(parent: int = None) -> list:
+    """Return a list of categories. If parent is provided, returns its children."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     params = {}
     if parent is not None:
@@ -35,6 +43,7 @@ async def fetch_categories(parent: int = None) -> list:
         return []
 
 async def fetch_products(category_id: int) -> list:
+    """Return available products for a given category id."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     params = {"category_id": category_id}
     try:
@@ -50,6 +59,7 @@ async def fetch_products(category_id: int) -> list:
         return []
 
 async def fetch_product_by_id(product_id: int) -> dict | None:
+    """Fetch a single product object by id or None if not found."""
     headers = {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
     try:
         async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
@@ -68,6 +78,7 @@ async def fetch_product_by_id(product_id: int) -> dict | None:
 
 @catalog_router.callback_query(F.data == "catalog_menu")
 async def show_root_categories(callback: CallbackQuery):
+    """Show top-level categories or an empty-state message."""
     categories = await fetch_categories()
     if not categories:
         await callback.message.edit_text("No categories available.")
@@ -86,6 +97,10 @@ async def show_root_categories(callback: CallbackQuery):
 
 @catalog_router.callback_query(F.data.startswith("category_"))
 async def show_category(callback: CallbackQuery, new_message: bool = False):
+    """Show either subcategories or products for a given category id.
+
+    If new_message is True, answer with a new message. Otherwise, edit current.
+    """
     category_id = int(callback.data.split("_")[-1])
     subcategories = await fetch_categories(parent=category_id)
 
@@ -129,6 +144,7 @@ async def show_category(callback: CallbackQuery, new_message: bool = False):
 
 @catalog_router.callback_query(F.data.startswith("product_"))
 async def show_product(callback: CallbackQuery):
+    """Render a product card (photo + caption) with actions keyboard."""
     _, product_id, category_id = callback.data.split("_")
     product = await fetch_product_by_id(int(product_id))
 
@@ -163,6 +179,7 @@ async def show_product(callback: CallbackQuery):
 
 @catalog_router.callback_query(F.data.startswith("back_to_"))
 async def go_back(callback: CallbackQuery):
+    """Handle 'Back' navigation from categories or product cards."""
     category_id = int(callback.data.split("_")[-1])
 
     try:

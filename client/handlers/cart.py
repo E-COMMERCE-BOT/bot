@@ -1,3 +1,9 @@
+"""Cart-related client handlers and API helpers.
+
+Provides async helpers to call the backend Order API and callback
+handlers to let users view and manage their cart inside Telegram.
+"""
+
 import aiohttp
 import logging
 from aiogram import Router, F
@@ -14,9 +20,11 @@ cart_router = Router()
 # API helpers
 # =================================================================================================
 async def _headers() -> dict:
+    """Return headers with the bot API key for backend requests."""
     return {"X-Bot-Api-Key": config_settings.BOT_API_KEY.get_secret_value()}
 
 async def get_cart(user_id: int) -> dict | None:
+    """Fetch the current cart for the provided Telegram user id."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -32,6 +40,7 @@ async def get_cart(user_id: int) -> dict | None:
     return None
 
 async def add_to_cart(order_id: int, product_id: int, quantity: int = 1) -> dict | None:
+    """Add a product to the cart by product id and quantity."""
     payload = {"product_id": product_id, "quantity": quantity}
     try:
         async with aiohttp.ClientSession() as session:
@@ -48,6 +57,7 @@ async def add_to_cart(order_id: int, product_id: int, quantity: int = 1) -> dict
     return None
 
 async def update_cart_item(order_id: int, product_id: int, delta: int | None = None, quantity: int | None = None) -> dict | None:
+    """Update cart item either by delta increment or by setting absolute quantity."""
     payload = {"product_id": product_id}
     if delta is not None:
         payload["delta"] = delta
@@ -68,6 +78,7 @@ async def update_cart_item(order_id: int, product_id: int, delta: int | None = N
     return None
 
 async def remove_cart_item(order_id: int, product_id: int) -> dict | None:
+    """Remove the specified product from the cart."""
     payload = {"product_id": product_id}
     try:
         async with aiohttp.ClientSession() as session:
@@ -88,6 +99,7 @@ async def remove_cart_item(order_id: int, product_id: int) -> dict | None:
 # =================================================================================================
 @cart_router.callback_query(F.data.startswith("add_to_cart_"))
 async def add_product_to_cart(callback: CallbackQuery):
+    """Handle 'add_to_cart_<product_id>' callback and ensure cart exists."""
     try:
         product_id = int(callback.data.split("_")[-1])
     except (IndexError, ValueError):
@@ -116,6 +128,7 @@ async def add_product_to_cart(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data == "view_cart")
 async def view_cart(callback: CallbackQuery):
+    """Show a formatted summary of the user's current cart."""
     user_id = callback.from_user.id
     cart = await get_cart(user_id)
     if not cart or not cart.get("items"):
@@ -133,6 +146,7 @@ async def view_cart(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data.startswith("choose_"))
 async def choose_product(callback: CallbackQuery):
+    """Prompt the user to pick a specific product from the cart for an action."""
     try:
         _, action, order_id = callback.data.split("_", 2)
         order_id = int(order_id)
@@ -153,6 +167,7 @@ async def choose_product(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data.startswith("increase_"))
 async def increase_item(callback: CallbackQuery):
+    """Increase quantity for the selected cart item by 1."""
     try:
         _, order_id, product_id = callback.data.split("_")
         order_id, product_id = int(order_id), int(product_id)
@@ -170,6 +185,7 @@ async def increase_item(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data.startswith("decrease_"))
 async def decrease_item(callback: CallbackQuery):
+    """Decrease quantity for the selected cart item by 1."""
     try:
         _, order_id, product_id = callback.data.split("_")
         order_id, product_id = int(order_id), int(product_id)
@@ -187,6 +203,7 @@ async def decrease_item(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data.startswith("remove_"))
 async def remove_item(callback: CallbackQuery):
+    """Remove the selected product from the cart."""
     try:
         _, order_id, product_id = callback.data.split("_")
         order_id, product_id = int(order_id), int(product_id)
@@ -204,4 +221,5 @@ async def remove_item(callback: CallbackQuery):
 
 @cart_router.callback_query(F.data == "back_to_main")
 async def back_to_main(callback: CallbackQuery):
+    """Return to the main menu keyboard from the cart screen."""
     await callback.message.edit_text("Welcome back to main menu", reply_markup=main_keyboard())
