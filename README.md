@@ -387,3 +387,14 @@ erDiagram
 - `product` — link to the product.
 - `quantity` — quantity.
 - Method `get_total()` — line cost (price × quantity).
+
+#### Testing
+
+The project uses Django’s built-in testing system (based on `unittest`).  
+Optionally, you can add `pytest` for a more convenient test workflow.
+
+### Running tests
+
+```bash
+# Run all tests
+python manage.py test
