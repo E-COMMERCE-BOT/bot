@@ -2,6 +2,10 @@
 
 Aiogram 3 Telegram interface for the E-Commerce Django API.
 
+> This project is part of a two-service application.
+>
+> **Related repository:** https://github.com/mayldute/ecommerce-api
+
 ## Features
 
 - User onboarding
